@@ -8,7 +8,17 @@
     "longName": "Analog 1",
     "projectType": "native",
     "resources": {
-        "media": []
+        "media": [
+            {
+                "file": "images/analog-1-icon.png",
+                "menuIcon": true,
+                "name": "SCREENSHOT_1",
+                "targetPlatforms": [
+                    "basalt"
+                ],
+                "type": "bitmap"
+            }
+        ]
     },
     "sdkVersion": "3",
     "shortName": "Analog 1",
@@ -18,7 +28,6 @@
     "uuid": "d581a936-0ffe-4bed-bbe4-a473d37ce5f5",
     "versionLabel": "1.0",
     "watchapp": {
-        "hiddenApp": true,
         "watchface": true
     }
 }

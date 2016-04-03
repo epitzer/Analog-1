@@ -14,7 +14,13 @@
 static Window *main_window;
 static Layer *canvas_layer;
 static AppTimer *timer;
-struct tm *current_time;
+static struct tm *current_time;
+static BatteryChargeState current_battery;
+
+static void battery_handler(BatteryChargeState battery_charge_state) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "battery charge state changed to %d", battery_charge_state.charge_percent);
+  current_battery = battery_charge_state;
+}
 
 static void update_time() {
   time_t temp = time(NULL); 
@@ -58,6 +64,7 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
     return GPoint(center.x+radius*radius_percentage*cos_lookup(angle)/TRIG_MAX_RATIO, center.y+radius*radius_percentage*sin_lookup(angle)/TRIG_MAX_RATIO);
   }
   
+  // dial
   graphics_context_set_stroke_color(gc, GColorWhite);
   graphics_context_set_fill_color(gc, GColorWhite);
   graphics_context_set_stroke_width(gc, 1);
@@ -68,48 +75,91 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
     graphics_fill_radial(gc, bounds, GOvalScaleModeFitCircle, i % 3 == 0 ? TICK_LENGTH*1.2 : TICK_LENGTH*0.8, angle1, angle2);
   }
   
+  // hour
   graphics_context_set_stroke_color(gc, GColorRed);
   graphics_context_set_stroke_width(gc, HOUR_THICKNESS);
   graphics_draw_line(gc, center, index_tip(hour_angle, HOUR_LENGTH));
   
+  // minute
   graphics_context_set_stroke_color(gc, GColorWhite);
   graphics_context_set_stroke_width(gc, MINUTE_THICKNESS);
   graphics_draw_line(gc, center, index_tip(minute_angle, MINUTE_LENGTH));
   
+  // second
   graphics_context_set_fill_color(gc, GColorYellow);
   // graphics_draw_line(gc, center, index_tip(second_angle, SECOND_LENGTH));
   graphics_fill_radial(gc, bounds, GOvalScaleModeFitCircle, TICK_LENGTH/4, second_angle+TRIG_MAX_ANGLE/60, second_angle+TRIG_MAX_ANGLE/60*4);
   
+  // hub
   graphics_context_set_stroke_color(gc, GColorWhite);
   graphics_context_set_fill_color(gc, GColorWhite);
   graphics_context_set_stroke_width(gc, 2);
   graphics_draw_circle(gc, center, 3);
   graphics_fill_circle(gc, center, 3);
   
+  // date
   char text[12];
   strftime(text, sizeof(text), "%b %d\n%a", current_time);
   GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
   GRect text_bounds = GRect(bounds.origin.x, bounds.origin.y-7, bounds.size.w / 2, bounds.size.h);
   GSize text_size = graphics_text_layout_get_content_size(text, font, bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter);
-  graphics_context_set_stroke_color(gc, GColorCeleste);
-  graphics_context_set_fill_color(gc, GColorCeleste);
+  graphics_context_set_text_color(gc, GColorCeleste);
   graphics_draw_text(gc, text, font, text_bounds, GTextOverflowModeWordWrap,  GTextAlignmentLeft, NULL);
+  
+  // battery
+  graphics_context_set_stroke_width(gc, 1);
+  int n_segments = (current_battery.charge_percent+4)/10;
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "nr of battery segments %d", n_segments);
+  int segment_length = bounds.size.w/10;
+  for (int i = 0; i<n_segments; i++) {
+    if (i == 0) graphics_context_set_stroke_color(gc, GColorRed);
+    else if (i == 1) graphics_context_set_stroke_color(gc, GColorChromeYellow);
+    else if (i == 2) graphics_context_set_stroke_color(gc, GColorYellow);
+    else if (i < 8) graphics_context_set_stroke_color(gc, GColorGreen);
+    else graphics_context_set_stroke_color(gc, GColorMintGreen);
+    graphics_draw_line(gc,
+                       GPoint(bounds.origin.x+segment_length*i,       bounds.origin.y+bounds.size.h-1),
+                       GPoint(bounds.origin.x+segment_length*(i+1)-2, bounds.origin.y+bounds.size.h-1));
+  }
+  if (n_segments == 0) {
+    graphics_context_set_stroke_color(gc, GColorRed);
+    graphics_context_set_stroke_width(gc, 4);
+    graphics_draw_line(gc,
+                       GPoint(bounds.origin.x, bounds.origin.y+bounds.size.h-1),
+                       GPoint(bounds.origin.x, bounds.origin.y+bounds.size.h-1));
+  }
+  if (current_battery.is_plugged) {
+    if (current_battery.is_charging) 
+      graphics_context_set_stroke_color(gc, GColorPictonBlue);
+    else
+      graphics_context_set_stroke_color(gc, GColorBrilliantRose);
+    graphics_context_set_stroke_width(gc, 4);
+    graphics_draw_line(gc,
+                       GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1),
+                       GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1));
+  }
+  
 }
 
 static void main_window_load(Window *window) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "loading main window...");
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
   canvas_layer = layer_create(bounds);
   layer_set_update_proc(canvas_layer, canvas_update_proc);
   layer_add_child(window_layer, canvas_layer);
   layer_mark_dirty(canvas_layer);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "loading complete.");
 }
 
 static void main_window_unload(Window *window) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "unloading main window...");
   layer_destroy(canvas_layer);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "unloading complete.");
 }
 
 static void init() {
+  APP_LOG(APP_LOG_LEVEL_INFO, "init");
   main_window = window_create();
   window_set_background_color(main_window, GColorBlack);
   window_set_window_handlers(main_window, (WindowHandlers) {
@@ -118,13 +168,25 @@ static void init() {
   });
   
   window_stack_push(main_window, true); // animated
-  update_time();
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "subscribing to battery state service...");
+  battery_state_service_subscribe(battery_handler);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "peeking at battery charge state...");
+  battery_handler(battery_state_service_peek());
   //tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "registering update timer at next 5 second step...");
   timer = app_timer_register(5000-current_time->tm_sec%5*1000, timer_callback, NULL);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "updating time...");
+  update_time();
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "init complete.");
 }
 
 static void deinit() {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "de-init...");
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "unregistering battery state service...");
+  battery_state_service_unsubscribe();
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "canceling update timer...");
   app_timer_cancel(timer);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "destroying main window...");
   window_destroy(main_window);
 }
 
