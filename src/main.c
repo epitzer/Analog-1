@@ -18,6 +18,7 @@ static AppTimer *timer;
 static struct tm *current_time;
 static BatteryChargeState current_battery;
 static bool current_connection;
+static GColor colors[11];
 
 static void connection_handler(bool is_connected) {
   current_connection = is_connected;
@@ -117,14 +118,14 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
   graphics_context_set_stroke_width(gc, 2);
   graphics_draw_circle(gc, center, 3);
   graphics_context_set_fill_color(gc, current_connection ? GColorDukeBlue : GColorMelon);
-  graphics_fill_circle(gc, center, 2);
+  graphics_fill_circle(gc, center, 3);
   
   // date
   char text[12];
   strftime(text, sizeof(text), "%b %d\n%a", current_time);
   GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
   GRect text_bounds = GRect(bounds.origin.x, bounds.origin.y-7, bounds.size.w / 2, bounds.size.h);
-  GSize text_size = graphics_text_layout_get_content_size(text, font, bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  //GSize text_size = graphics_text_layout_get_content_size(text, font, bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter);
   graphics_context_set_text_color(gc, GColorCeleste);
   graphics_draw_text(gc, text, font, text_bounds, GTextOverflowModeWordWrap,  GTextAlignmentLeft, NULL);
   
@@ -161,6 +162,22 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
                        GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1));
   }
   
+  // steps
+  int steps = health_service_sum_today(HealthMetricStepCount);
+  uint32_t n_step_segments = steps/1000;
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "%d steps today -> %d segments, %d pixels", steps, (int)n_step_segments, (int)n_step_segments*12);
+  graphics_context_set_stroke_width(gc, 1);
+  for (uint32_t i = 0; i<n_step_segments; i++) {
+    graphics_context_set_stroke_color(gc, colors[i < sizeof(colors) ? i : (sizeof(colors)-1)]);
+    graphics_draw_line(gc,
+                       GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1-i*12),
+                       GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1-i*12-10));
+  }
+  graphics_context_set_stroke_width(gc, 2);
+  graphics_context_set_stroke_color(gc, GColorBrightGreen);
+  graphics_draw_line(gc,
+                     GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1-10*12),
+                     GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1-10*12));
 }
 
 static void main_window_load(Window *window) {
@@ -231,6 +248,17 @@ static void deinit() {
 }
 
 int main() {
+  colors[0] = GColorRed;
+  colors[1] = GColorOrange;
+  colors[2] = GColorChromeYellow;
+  colors[3] = GColorLimerick;
+  colors[4] = GColorBrass;
+  colors[5] = GColorKellyGreen;
+  colors[6] = GColorIslamicGreen;
+  colors[7] = GColorMalachite;
+  colors[8] = GColorMediumAquamarine;
+  colors[9] = GColorElectricBlue;
+  colors[10] = GColorCeleste;
   init();
   app_event_loop();
   deinit();
