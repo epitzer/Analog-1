@@ -17,6 +17,19 @@ static Layer *canvas_layer;
 static AppTimer *timer;
 static struct tm *current_time;
 static BatteryChargeState current_battery;
+static bool current_connection;
+
+static void connection_handler(bool is_connected) {
+  current_connection = is_connected;
+  if (is_connected) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "bluetooth is now connected");
+  } else {
+    APP_LOG(APP_LOG_LEVEL_INFO, "bluetooth is now disconnected");
+    if (current_time->tm_hour > 6 && current_time->tm_hour < 23) // TODO: check quiet time status
+      vibes_short_pulse();
+  }
+  layer_mark_dirty(canvas_layer);
+}
 
 static void battery_handler(BatteryChargeState battery_charge_state) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "battery charge state changed to %d", battery_charge_state.charge_percent);
@@ -99,12 +112,12 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
     }
   }
   
-  // hub
+  // hub / bluetooth
   graphics_context_set_stroke_color(gc, GColorWhite);
-  graphics_context_set_fill_color(gc, GColorWhite);
   graphics_context_set_stroke_width(gc, 2);
   graphics_draw_circle(gc, center, 3);
-  graphics_fill_circle(gc, center, 3);
+  graphics_context_set_fill_color(gc, current_connection ? GColorDukeBlue : GColorMelon);
+  graphics_fill_circle(gc, center, 2);
   
   // date
   char text[12];
@@ -162,6 +175,13 @@ static void main_window_load(Window *window) {
   battery_handler(battery_state_service_peek());
   APP_LOG(APP_LOG_LEVEL_DEBUG, "subscribing to battery state service...");
   battery_state_service_subscribe(battery_handler);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "subscribing to app connection service...");
+  connection_service_subscribe((ConnectionHandlers) {
+    .pebble_app_connection_handler = connection_handler,
+    .pebblekit_connection_handler = NULL
+  });
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "getting current bluetooth connection status...");
+  current_connection = connection_service_peek_pebble_app_connection();
   APP_LOG(APP_LOG_LEVEL_DEBUG, "updating time...");
   update_time();
   if (UPDATE_INTERVAL_SEC == 1) {
@@ -180,8 +200,10 @@ static void main_window_load(Window *window) {
 
 static void main_window_unload(Window *window) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "unloading main window...");
-  //APP_LOG(APP_LOG_LEVEL_DEBUG, "unregistering battery state service...");
-  //battery_state_service_unsubscribe();
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "unsubscribing from app connection service...");
+  connection_service_unsubscribe();
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "unregistering battery state service...");
+  battery_state_service_unsubscribe();
   APP_LOG(APP_LOG_LEVEL_DEBUG, "canceling update timer...");
   app_timer_cancel(timer);
   APP_LOG(APP_LOG_LEVEL_DEBUG, "destroying canvas...");
@@ -205,6 +227,7 @@ static void deinit() {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "de-init...");
   APP_LOG(APP_LOG_LEVEL_DEBUG, "destroying main window...");
   window_destroy(main_window);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "de-init complete.");
 }
 
 int main() {
