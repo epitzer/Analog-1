@@ -10,6 +10,7 @@
 #define MINUTE_THICKNESS 2.0
 #define SECOND_LENGTH 0.9
 #define SECOND_THICKNESS 1.0
+#define UPDATE_INTERVAL_SEC 20
 
 static Window *main_window;
 static Layer *canvas_layer;
@@ -37,7 +38,7 @@ static void update_time() {
 static void timer_callback(void *context) {
   update_time();
   layer_mark_dirty(canvas_layer);
-  timer = app_timer_register(5000-current_time->tm_sec%5*1000, timer_callback, NULL); // re-schedule
+  timer = app_timer_register(UPDATE_INTERVAL_SEC*1000-current_time->tm_sec%UPDATE_INTERVAL_SEC*1000, timer_callback, NULL); // re-schedule
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
@@ -86,9 +87,16 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
   graphics_draw_line(gc, center, index_tip(minute_angle, MINUTE_LENGTH));
   
   // second
-  graphics_context_set_fill_color(gc, GColorYellow);
-  // graphics_draw_line(gc, center, index_tip(second_angle, SECOND_LENGTH));
-  graphics_fill_radial(gc, bounds, GOvalScaleModeFitCircle, TICK_LENGTH/4, second_angle+TRIG_MAX_ANGLE/60, second_angle+TRIG_MAX_ANGLE/60*4);
+  if (UPDATE_INTERVAL_SEC == 1) {
+    graphics_context_set_stroke_color(gc, GColorYellow);
+  graphics_context_set_stroke_width(gc, 1);
+    graphics_draw_line(gc, center, index_tip(second_angle, SECOND_LENGTH));
+  } else if (UPDATE_INTERVAL_SEC < 60) {
+    graphics_context_set_fill_color(gc, GColorWindsorTan);
+    for (int i = 0; i<UPDATE_INTERVAL_SEC/5; i++) {
+      graphics_fill_radial(gc, bounds, GOvalScaleModeFitCircle, 1, second_angle+TRIG_MAX_ANGLE/60*(1+i*5), second_angle+TRIG_MAX_ANGLE/60*(4+i*5));
+    }
+  }
   
   // hub
   graphics_context_set_stroke_color(gc, GColorWhite);
@@ -172,9 +180,14 @@ static void init() {
   battery_state_service_subscribe(battery_handler);
   APP_LOG(APP_LOG_LEVEL_DEBUG, "peeking at battery charge state...");
   battery_handler(battery_state_service_peek());
-  //tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "registering update timer at next 5 second step...");
-  timer = app_timer_register(5000-current_time->tm_sec%5*1000, timer_callback, NULL);
+  if (UPDATE_INTERVAL_SEC == 1) {
+    tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+  } else if (UPDATE_INTERVAL_SEC >= 60) {
+    tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  } else {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "registering update timer at next %d second step...", UPDATE_INTERVAL_SEC);
+    timer = app_timer_register(UPDATE_INTERVAL_SEC*1000-current_time->tm_sec%UPDATE_INTERVAL_SEC*1000, timer_callback, NULL);
+  }
   APP_LOG(APP_LOG_LEVEL_DEBUG, "updating time...");
   update_time();
   APP_LOG(APP_LOG_LEVEL_DEBUG, "init complete.");
