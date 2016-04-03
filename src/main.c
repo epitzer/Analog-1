@@ -21,6 +21,7 @@ static BatteryChargeState current_battery;
 static void battery_handler(BatteryChargeState battery_charge_state) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "battery charge state changed to %d", battery_charge_state.charge_percent);
   current_battery = battery_charge_state;
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "copied battery charge state");
 }
 
 static void update_time() {
@@ -38,12 +39,12 @@ static void update_time() {
 static void timer_callback(void *context) {
   update_time();
   layer_mark_dirty(canvas_layer);
-  timer = app_timer_register(UPDATE_INTERVAL_SEC*1000-current_time->tm_sec%UPDATE_INTERVAL_SEC*1000, timer_callback, NULL); // re-schedule
+  timer = app_timer_register((UPDATE_INTERVAL_SEC-current_time->tm_sec%UPDATE_INTERVAL_SEC)*1000, timer_callback, NULL); // re-schedule
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-  //update_time();
-  //layer_mark_dirty(canvas_layer);
+  update_time();
+  layer_mark_dirty(canvas_layer);
 }  
 
 static void canvas_update_proc(Layer *layer, GContext *gc) {
@@ -55,11 +56,11 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
   
   GPoint center = GPoint(bounds.origin.x+bounds.size.w/2, bounds.origin.y+bounds.size.h/2);
   uint16_t radius = MIN(bounds.size.w, bounds.size.h)/2;
-  //APP_LOG(APP_LOG_LEVEL_INFO, "time %02d:%02d:%02d", hour, minute, second);
-  int32_t hour_angle = TRIG_MAX_ANGLE*(double)(current_time->tm_hour%12)/60+current_time->tm_min/720;
-  int32_t minute_angle = TRIG_MAX_ANGLE*(double)current_time->tm_min/60+current_time->tm_sec/3600;
-  int32_t second_angle = TRIG_MAX_ANGLE*(double)current_time->tm_sec/60;
-  //APP_LOG(APP_LOG_LEVEL_INFO, "time angles %d° %d° %d°", (int)hour_angle, (int)minute_angle, (int)second_angle);
+  APP_LOG(APP_LOG_LEVEL_INFO, "time %02d:%02d:%02d", current_time->tm_hour, current_time->tm_min, current_time->tm_sec);
+  int32_t hour_angle = TRIG_MAX_ANGLE*((current_time->tm_hour%12)/12.0+current_time->tm_min/720.0-0.25);
+  int32_t minute_angle = TRIG_MAX_ANGLE*(current_time->tm_min/60.0+current_time->tm_sec/3600.0-0.25);
+  int32_t second_angle = TRIG_MAX_ANGLE*((current_time->tm_sec/UPDATE_INTERVAL_SEC*UPDATE_INTERVAL_SEC)/60.0);
+  APP_LOG(APP_LOG_LEVEL_INFO, "time angles %d° %d° %d°", (int)(360.0*hour_angle/TRIG_MAX_ANGLE), (int)(360.0*minute_angle/TRIG_MAX_ANGLE), (int)(360.0*second_angle/TRIG_MAX_ANGLE));
   
   GPoint index_tip(int32_t angle, double radius_percentage) {
     return GPoint(center.x+radius*radius_percentage*cos_lookup(angle)/TRIG_MAX_RATIO, center.y+radius*radius_percentage*sin_lookup(angle)/TRIG_MAX_RATIO);
@@ -71,8 +72,8 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
   graphics_context_set_stroke_width(gc, 1);
   for (int i = 1; i<=12; i++) {
     double width = i % 3 == 0 ? 0.8 : 0.33;
-    int32_t angle1 = TRIG_MAX_ANGLE*(double)(i/12.0-width/180);
-    int32_t angle2 = TRIG_MAX_ANGLE*(double)(i/12.0+width/180);
+    int32_t angle1 = TRIG_MAX_ANGLE*(double)(i/12.0-width/180.0);
+    int32_t angle2 = TRIG_MAX_ANGLE*(double)(i/12.0+width/180.0);
     graphics_fill_radial(gc, bounds, GOvalScaleModeFitCircle, i % 3 == 0 ? TICK_LENGTH*1.2 : TICK_LENGTH*0.8, angle1, angle2);
   }
   
@@ -89,7 +90,7 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
   // second
   if (UPDATE_INTERVAL_SEC == 1) {
     graphics_context_set_stroke_color(gc, GColorYellow);
-  graphics_context_set_stroke_width(gc, 1);
+    graphics_context_set_stroke_width(gc, 1);
     graphics_draw_line(gc, center, index_tip(second_angle, SECOND_LENGTH));
   } else if (UPDATE_INTERVAL_SEC < 60) {
     graphics_context_set_fill_color(gc, GColorWindsorTan);
@@ -156,12 +157,34 @@ static void main_window_load(Window *window) {
   canvas_layer = layer_create(bounds);
   layer_set_update_proc(canvas_layer, canvas_update_proc);
   layer_add_child(window_layer, canvas_layer);
-  layer_mark_dirty(canvas_layer);
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "peeking at battery charge state...");
+  battery_handler(battery_state_service_peek());
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "subscribing to battery state service...");
+  battery_state_service_subscribe(battery_handler);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "updating time...");
+  update_time();
+  if (UPDATE_INTERVAL_SEC == 1) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "registering update timer at second interval");
+    tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+  } else if (UPDATE_INTERVAL_SEC >= 60) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "registering update timer at minute interval");
+    tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  } else {
+    int update_time = (UPDATE_INTERVAL_SEC-current_time->tm_sec%UPDATE_INTERVAL_SEC);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "registering update timer at next %d second step in %ds...", UPDATE_INTERVAL_SEC, update_time);
+    timer = app_timer_register(update_time*1000, timer_callback, NULL);
+  }
   APP_LOG(APP_LOG_LEVEL_DEBUG, "loading complete.");
 }
 
 static void main_window_unload(Window *window) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "unloading main window...");
+  //APP_LOG(APP_LOG_LEVEL_DEBUG, "unregistering battery state service...");
+  //battery_state_service_unsubscribe();
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "canceling update timer...");
+  app_timer_cancel(timer);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "destroying canvas...");
   layer_destroy(canvas_layer);
   APP_LOG(APP_LOG_LEVEL_DEBUG, "unloading complete.");
 }
@@ -174,31 +197,12 @@ static void init() {
     .load = main_window_load,
     .unload = main_window_unload
   });
-  
   window_stack_push(main_window, true); // animated
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "subscribing to battery state service...");
-  battery_state_service_subscribe(battery_handler);
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "peeking at battery charge state...");
-  battery_handler(battery_state_service_peek());
-  if (UPDATE_INTERVAL_SEC == 1) {
-    tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
-  } else if (UPDATE_INTERVAL_SEC >= 60) {
-    tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
-  } else {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "registering update timer at next %d second step...", UPDATE_INTERVAL_SEC);
-    timer = app_timer_register(UPDATE_INTERVAL_SEC*1000-current_time->tm_sec%UPDATE_INTERVAL_SEC*1000, timer_callback, NULL);
-  }
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "updating time...");
-  update_time();
   APP_LOG(APP_LOG_LEVEL_DEBUG, "init complete.");
 }
 
 static void deinit() {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "de-init...");
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "unregistering battery state service...");
-  battery_state_service_unsubscribe();
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "canceling update timer...");
-  app_timer_cancel(timer);
   APP_LOG(APP_LOG_LEVEL_DEBUG, "destroying main window...");
   window_destroy(main_window);
 }
