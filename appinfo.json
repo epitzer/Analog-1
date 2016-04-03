@@ -1,0 +1,24 @@
+{
+    "appKeys": {},
+    "capabilities": [
+        ""
+    ],
+    "companyName": "erik.pitzer@gmail.com",
+    "enableMultiJS": true,
+    "longName": "Analog 1",
+    "projectType": "native",
+    "resources": {
+        "media": []
+    },
+    "sdkVersion": "3",
+    "shortName": "Analog 1",
+    "targetPlatforms": [
+        "basalt"
+    ],
+    "uuid": "d581a936-0ffe-4bed-bbe4-a473d37ce5f5",
+    "versionLabel": "1.0",
+    "watchapp": {
+        "hiddenApp": true,
+        "watchface": true
+    }
+}
