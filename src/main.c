@@ -39,7 +39,7 @@ static void battery_handler(BatteryChargeState battery_charge_state) {
 }
 
 static void update_time() {
-  time_t temp = time(NULL); 
+  time_t temp = time(NULL);
   current_time = localtime(&temp);
 
   // static char buffer[8];
@@ -59,7 +59,7 @@ static void timer_callback(void *context) {
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time();
   layer_mark_dirty(canvas_layer);
-}  
+}
 
 static void canvas_update_proc(Layer *layer, GContext *gc) {
   GRect bounds = layer_get_bounds(layer);
@@ -67,7 +67,7 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
   graphics_context_set_fill_color(gc, GColorBlue);
   graphics_context_set_stroke_width(gc, 5);
   graphics_context_set_antialiased(gc, true); // default
-  
+
   GPoint center = GPoint(bounds.origin.x+bounds.size.w/2, bounds.origin.y+bounds.size.h/2);
   uint16_t radius = MIN(bounds.size.w, bounds.size.h)/2;
   APP_LOG(APP_LOG_LEVEL_INFO, "time %02d:%02d:%02d", current_time->tm_hour, current_time->tm_min, current_time->tm_sec);
@@ -75,11 +75,11 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
   int32_t minute_angle = TRIG_MAX_ANGLE*(current_time->tm_min/60.0+current_time->tm_sec/3600.0-0.25);
   int32_t second_angle = TRIG_MAX_ANGLE*((current_time->tm_sec/UPDATE_INTERVAL_SEC*UPDATE_INTERVAL_SEC)/60.0);
   APP_LOG(APP_LOG_LEVEL_INFO, "time angles %d° %d° %d°", (int)(360.0*hour_angle/TRIG_MAX_ANGLE), (int)(360.0*minute_angle/TRIG_MAX_ANGLE), (int)(360.0*second_angle/TRIG_MAX_ANGLE));
-  
+
   GPoint index_tip(int32_t angle, double radius_percentage) {
     return GPoint(center.x+radius*radius_percentage*cos_lookup(angle)/TRIG_MAX_RATIO, center.y+radius*radius_percentage*sin_lookup(angle)/TRIG_MAX_RATIO);
   }
-  
+
   // dial
   graphics_context_set_stroke_color(gc, GColorWhite);
   graphics_context_set_fill_color(gc, GColorWhite);
@@ -90,17 +90,17 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
     int32_t angle2 = TRIG_MAX_ANGLE*(double)(i/12.0+width/180.0);
     graphics_fill_radial(gc, bounds, GOvalScaleModeFitCircle, i % 3 == 0 ? TICK_LENGTH*1.2 : TICK_LENGTH*0.8, angle1, angle2);
   }
-  
+
   // hour
   graphics_context_set_stroke_color(gc, GColorRed);
   graphics_context_set_stroke_width(gc, HOUR_THICKNESS);
   graphics_draw_line(gc, center, index_tip(hour_angle, HOUR_LENGTH));
-  
+
   // minute
   graphics_context_set_stroke_color(gc, GColorWhite);
   graphics_context_set_stroke_width(gc, MINUTE_THICKNESS);
   graphics_draw_line(gc, center, index_tip(minute_angle, MINUTE_LENGTH));
-  
+
   // second
   if (UPDATE_INTERVAL_SEC == 1) {
     graphics_context_set_stroke_color(gc, GColorYellow);
@@ -112,14 +112,14 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
       graphics_fill_radial(gc, bounds, GOvalScaleModeFitCircle, 1, second_angle+TRIG_MAX_ANGLE/60*(1+i*5), second_angle+TRIG_MAX_ANGLE/60*(4+i*5));
     }
   }
-  
+
   // hub / bluetooth
   graphics_context_set_stroke_color(gc, GColorWhite);
   graphics_context_set_stroke_width(gc, 2);
   graphics_draw_circle(gc, center, 3);
   graphics_context_set_fill_color(gc, current_connection ? GColorDukeBlue : GColorMelon);
   graphics_fill_circle(gc, center, 3);
-  
+
   // date
   char text[12];
   strftime(text, sizeof(text), "%b %d\n%a", current_time);
@@ -128,7 +128,7 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
   //GSize text_size = graphics_text_layout_get_content_size(text, font, bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter);
   graphics_context_set_text_color(gc, GColorCeleste);
   graphics_draw_text(gc, text, font, text_bounds, GTextOverflowModeWordWrap,  GTextAlignmentLeft, NULL);
-  
+
   // battery
   graphics_context_set_stroke_width(gc, 1);
   int n_segments = (current_battery.charge_percent+4)/10;
@@ -152,7 +152,7 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
                        GPoint(bounds.origin.x, bounds.origin.y+bounds.size.h-1));
   }
   if (current_battery.is_plugged) {
-    if (current_battery.is_charging) 
+    if (current_battery.is_charging)
       graphics_context_set_stroke_color(gc, GColorPictonBlue);
     else
       graphics_context_set_stroke_color(gc, GColorBrilliantRose);
@@ -161,7 +161,7 @@ static void canvas_update_proc(Layer *layer, GContext *gc) {
                        GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1),
                        GPoint(bounds.origin.x+bounds.size.w-1, bounds.origin.y+bounds.size.h-1));
   }
-  
+
   // steps
   int steps = health_service_sum_today(HealthMetricStepCount);
   uint32_t n_step_segments = steps/1000;
@@ -187,7 +187,7 @@ static void main_window_load(Window *window) {
   canvas_layer = layer_create(bounds);
   layer_set_update_proc(canvas_layer, canvas_update_proc);
   layer_add_child(window_layer, canvas_layer);
-  
+
   APP_LOG(APP_LOG_LEVEL_DEBUG, "peeking at battery charge state...");
   battery_handler(battery_state_service_peek());
   APP_LOG(APP_LOG_LEVEL_DEBUG, "subscribing to battery state service...");
